@@ -74,7 +74,7 @@ public class SentinelDubboProviderFilter extends BaseSentinelDubboFilter impleme
         try {
             // Only need to create entrance context at provider side, as context will take effect
             // at entrance of invocation chain only (for inbound traffic).
-            ContextUtil.enter(methodResourceName, origin);
+            ContextUtil.enter(DubboAdapterGlobalConfig.getProviderContextName(interfaceResourceName), origin);
             interfaceEntry = SphU.entry(interfaceResourceName, ResourceTypeConstants.COMMON_RPC, EntryType.IN);
             methodEntry = SphU.entry(methodResourceName, ResourceTypeConstants.COMMON_RPC, EntryType.IN,
                 invocation.getArguments());

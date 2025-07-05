@@ -22,6 +22,7 @@ import com.alibaba.csp.sentinel.adapter.dubbo3.origin.DubboOriginParser;
 import com.alibaba.csp.sentinel.config.SentinelConfig;
 import com.alibaba.csp.sentinel.util.AssertUtil;
 import com.alibaba.csp.sentinel.util.StringUtil;
+import com.alibaba.csp.sentinel.util.function.Supplier;
 
 /**
  * <p>
@@ -44,9 +45,40 @@ public final class DubboAdapterGlobalConfig {
 
     public static final String DUBBO_INTERFACE_GROUP_VERSION_ENABLED = "csp.sentinel.dubbo.interface.group.version.enabled";
 
+    private static volatile String DUBBO_PROVIDER_CONTEXT_NAME = "";
+    private static volatile String DUBBO_CONSUMER_CONTEXT_NAME = "";
+
     private static volatile DubboFallback consumerFallback = new DefaultDubboFallback();
     private static volatile DubboFallback providerFallback = new DefaultDubboFallback();
     private static volatile DubboOriginParser originParser = new DefaultDubboOriginParser();
+
+    public static String getProviderContextName(String defaultContextName) {
+        if (StringUtil.isNotBlank(DUBBO_PROVIDER_CONTEXT_NAME)) {
+            return DUBBO_PROVIDER_CONTEXT_NAME;
+        }
+        return defaultContextName;
+    }
+
+    public static String getProviderContextName(Supplier<String> defaultContextNameSupplier) {
+        if (StringUtil.isNotBlank(DUBBO_PROVIDER_CONTEXT_NAME)) {
+            return DUBBO_PROVIDER_CONTEXT_NAME;
+        }
+        return defaultContextNameSupplier.get();
+    }
+
+    public static String getConsumerContextName(String defaultContextName) {
+        if (StringUtil.isNotBlank(DUBBO_CONSUMER_CONTEXT_NAME)) {
+            return DUBBO_CONSUMER_CONTEXT_NAME;
+        }
+        return defaultContextName;
+    }
+
+    public static String getConsumerContextName(Supplier<String> defaultContextNameSupplier) {
+        if (StringUtil.isNotBlank(DUBBO_CONSUMER_CONTEXT_NAME)) {
+            return DUBBO_CONSUMER_CONTEXT_NAME;
+        }
+        return defaultContextNameSupplier.get();
+    }
 
     public static boolean isUsePrefix() {
         return TRUE_STR.equalsIgnoreCase(SentinelConfig.getConfig(DUBBO_RES_NAME_WITH_PREFIX_KEY));
@@ -74,6 +106,14 @@ public final class DubboAdapterGlobalConfig {
 
     public static DubboFallback getConsumerFallback() {
         return consumerFallback;
+    }
+
+    public static void setProviderContextName(String contextName) {
+        DUBBO_PROVIDER_CONTEXT_NAME = contextName;
+    }
+
+    public static void setConsumerContextName(String contextName) {
+        DUBBO_CONSUMER_CONTEXT_NAME = contextName;
     }
 
     public static void setConsumerFallback(DubboFallback consumerFallback) {

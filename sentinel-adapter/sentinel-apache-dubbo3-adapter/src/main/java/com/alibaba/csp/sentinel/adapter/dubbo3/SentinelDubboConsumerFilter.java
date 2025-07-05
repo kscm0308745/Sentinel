@@ -16,17 +16,27 @@
 package com.alibaba.csp.sentinel.adapter.dubbo3;
 
 import com.alibaba.csp.sentinel.*;
+import com.alibaba.csp.sentinel.Constants;
 import com.alibaba.csp.sentinel.adapter.dubbo3.config.DubboAdapterGlobalConfig;
+import com.alibaba.csp.sentinel.context.Context;
+import com.alibaba.csp.sentinel.context.ContextUtil;
 import com.alibaba.csp.sentinel.log.RecordLog;
+import com.alibaba.csp.sentinel.node.DefaultNode;
+import com.alibaba.csp.sentinel.node.EntranceNode;
+import com.alibaba.csp.sentinel.slotchain.StringResourceWrapper;
 import com.alibaba.csp.sentinel.slots.block.BlockException;
 
+import com.alibaba.spring.util.BeanUtils;
 import org.apache.dubbo.common.extension.Activate;
 import org.apache.dubbo.rpc.*;
 import org.apache.dubbo.rpc.cluster.filter.ClusterFilter;
 import org.apache.dubbo.rpc.support.RpcUtils;
 
+import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.apache.dubbo.common.constants.CommonConstants.CONSUMER;
 
@@ -48,6 +58,8 @@ public class SentinelDubboConsumerFilter extends BaseSentinelDubboFilter impleme
     public SentinelDubboConsumerFilter() {
         RecordLog.info("Sentinel Apache Dubbo3 consumer filter initialized");
     }
+
+    private static volatile Map<String, Context> contextMap = new HashMap<>();
 
     @Override
     String getMethodName(Invoker invoker, Invocation invocation, String prefix) {
@@ -76,9 +88,27 @@ public class SentinelDubboConsumerFilter extends BaseSentinelDubboFilter impleme
         String interfaceResourceName = getInterfaceName(invoker, prefix);
         String methodResourceName = getMethodName(invoker, invocation, prefix);
         try {
-            interfaceEntry = SphU.entry(interfaceResourceName, ResourceTypeConstants.COMMON_RPC, EntryType.OUT);
-            methodEntry = SphU.entry(methodResourceName, ResourceTypeConstants.COMMON_RPC, EntryType.OUT,
-                invocation.getArguments());
+            AtomicReference<Entry> interfaceEntryReference = new AtomicReference<>();
+            AtomicReference<Entry> methodEntryReference = new AtomicReference<>();
+            AtomicReference<BlockException> exceptionReference = new AtomicReference<>();
+            ContextUtil.runOnContext(getContext(interfaceResourceName),
+                () -> {
+                    try {
+                        interfaceEntryReference.set(SphU.entry(interfaceResourceName, ResourceTypeConstants.COMMON_RPC, EntryType.OUT));
+                        methodEntryReference.set(SphU.entry(methodResourceName, ResourceTypeConstants.COMMON_RPC, EntryType.OUT,
+                                invocation.getArguments()));
+                    } catch (BlockException e) {
+                        exceptionReference.set(e);
+                    }
+                });
+            interfaceEntry = interfaceEntryReference.get();
+            methodEntry = methodEntryReference.get();
+            if (exceptionReference.get() != null) {
+                throw exceptionReference.get();
+            }
+//            interfaceEntry = SphU.entry(interfaceResourceName, ResourceTypeConstants.COMMON_RPC, EntryType.OUT);
+//            methodEntry = SphU.entry(methodResourceName, ResourceTypeConstants.COMMON_RPC, EntryType.OUT,
+//                invocation.getArguments());
             Result result = invoker.invoke(invocation);
             if (result.hasException()) {
                 Tracer.traceEntry(result.getException(), interfaceEntry);
@@ -101,17 +131,50 @@ public class SentinelDubboConsumerFilter extends BaseSentinelDubboFilter impleme
         }
     }
 
+    private static Context getContext(String interfaceResourceName) {
+        String consumerContextName = DubboAdapterGlobalConfig.getConsumerContextName(interfaceResourceName);
+        Context context = contextMap.get(consumerContextName);
+        if (context == null) {
+            synchronized (SentinelDubboConsumerFilter.class) {
+                context = contextMap.get(consumerContextName);
+                if (context == null) {
+                    EntranceNode node = new EntranceNode(new StringResourceWrapper(consumerContextName, EntryType.IN), null);
+                    Constants.ROOT.addChild(node);
+                    context = new Context(node, consumerContextName);
+                    contextMap.put(consumerContextName, context);
+                }
+            }
+        }
+        return context;
+    }
+
     private Result asyncInvoke(Invoker<?> invoker, Invocation invocation) {
         LinkedList<EntryHolder> queue = new LinkedList<>();
         String prefix = DubboAdapterGlobalConfig.getDubboConsumerResNamePrefixKey();
         String interfaceResourceName = getInterfaceName(invoker, prefix);
         String methodResourceName = getMethodName(invoker, invocation, prefix);
         try {
-            queue.push(new EntryHolder(
-                SphU.asyncEntry(interfaceResourceName, ResourceTypeConstants.COMMON_RPC, EntryType.OUT), null));
-            queue.push(new EntryHolder(
-                SphU.asyncEntry(methodResourceName, ResourceTypeConstants.COMMON_RPC,
-                    EntryType.OUT, 1, invocation.getArguments()), invocation.getArguments()));
+            AtomicReference<BlockException> exceptionReference = new AtomicReference<>();
+            ContextUtil.runOnContext(getContext(interfaceResourceName),
+                () -> {
+                    try {
+                        queue.push(new EntryHolder(
+                                SphU.asyncEntry(interfaceResourceName, ResourceTypeConstants.COMMON_RPC, EntryType.OUT), null));
+                        queue.push(new EntryHolder(
+                                SphU.asyncEntry(methodResourceName, ResourceTypeConstants.COMMON_RPC,
+                                        EntryType.OUT, 1, invocation.getArguments()), invocation.getArguments()));
+                    } catch (BlockException e) {
+                        exceptionReference.set(e);
+                    }
+                });
+            if (exceptionReference.get() != null) {
+                throw exceptionReference.get();
+            }
+//            queue.push(new EntryHolder(
+//                SphU.asyncEntry(interfaceResourceName, ResourceTypeConstants.COMMON_RPC, EntryType.OUT), null));
+//            queue.push(new EntryHolder(
+//                SphU.asyncEntry(methodResourceName, ResourceTypeConstants.COMMON_RPC,
+//                    EntryType.OUT, 1, invocation.getArguments()), invocation.getArguments()));
             Result result = invoker.invoke(invocation);
             result.whenCompleteWithContext((r, throwable) -> {
                 Throwable error = throwable;
