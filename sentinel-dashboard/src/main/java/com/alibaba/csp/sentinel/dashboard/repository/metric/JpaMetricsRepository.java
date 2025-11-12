@@ -144,4 +144,66 @@ public class JpaMetricsRepository implements MetricsRepository<MetricEntity> {
                 .map(Map.Entry::getKey)
                 .collect(Collectors.toList());
     }
+
+    @Override
+    public List<String> listResourcesOfApp(String app, long startTime, long endTime) {
+        List<String> results = new ArrayList<>();
+        if (StringUtil.isBlank(app)) {
+            return results;
+        }
+
+        StringBuilder hql = new StringBuilder();
+        hql.append("FROM MetricPO");
+        hql.append(" WHERE app=:app");
+        hql.append(" AND timestamp>=:startTime");
+        hql.append(" AND timestamp<=:endTime");
+
+        Query query = em.createQuery(hql.toString());
+        query.setParameter("app", app);
+        query.setParameter("startTime", Date.from(Instant.ofEpochMilli(startTime)));
+        query.setParameter("endTime", Date.from(Instant.ofEpochMilli(endTime)));
+
+        List<MetricPO> metricPOs = query.getResultList();
+        if (CollectionUtils.isEmpty(metricPOs)) {
+            return results;
+        }
+
+        List<MetricEntity> metricEntities = new ArrayList<MetricEntity>();
+        for (MetricPO metricPO : metricPOs) {
+            MetricEntity metricEntity = new MetricEntity();
+            BeanUtils.copyProperties(metricPO, metricEntity);
+            metricEntities.add(metricEntity);
+        }
+
+        Map<String, MetricEntity> resourceCount = new HashMap<>(32);
+
+        for (MetricEntity metricEntity : metricEntities) {
+            String resource = metricEntity.getResource();
+            if (resourceCount.containsKey(resource)) {
+                MetricEntity oldEntity = resourceCount.get(resource);
+                oldEntity.addPassQps(metricEntity.getPassQps());
+                oldEntity.addRtAndSuccessQps(metricEntity.getRt(), metricEntity.getSuccessQps());
+                oldEntity.addBlockQps(metricEntity.getBlockQps());
+                oldEntity.addExceptionQps(metricEntity.getExceptionQps());
+                oldEntity.addCount(1);
+            } else {
+                resourceCount.put(resource, MetricEntity.copyOf(metricEntity));
+            }
+        }
+
+        // Order by last minute b_qps DESC.
+        return resourceCount.entrySet()
+                .stream()
+                .sorted((o1, o2) -> {
+                    MetricEntity e1 = o1.getValue();
+                    MetricEntity e2 = o2.getValue();
+                    int t = e2.getBlockQps().compareTo(e1.getBlockQps());
+                    if (t != 0) {
+                        return t;
+                    }
+                    return e2.getPassQps().compareTo(e1.getPassQps());
+                })
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+    }
 }

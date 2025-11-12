@@ -163,4 +163,9 @@ public class InMemoryMetricsRepository implements MetricsRepository<MetricEntity
             readWriteLock.readLock().unlock();
         }
     }
+
+    @Override
+    public List<String> listResourcesOfApp(String app, long startTime, long endTime) {
+        return new ArrayList<>();
+    }
 }

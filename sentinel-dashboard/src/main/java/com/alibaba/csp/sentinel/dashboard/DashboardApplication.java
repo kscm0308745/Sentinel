@@ -20,6 +20,8 @@ import com.alibaba.csp.sentinel.init.InitExecutor;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ComponentScan;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 /**
  * Sentinel dashboard application.
@@ -28,6 +30,8 @@ import org.springframework.context.annotation.ComponentScan;
  */
 @ComponentScan(basePackages = {"com.alibaba.csp.sentinel.dashboard", "top.cmagic.sentinel"})
 @SpringBootApplication
+@EnableJpaRepositories
+@EnableJpaAuditing
 public class DashboardApplication {
 
     public static void main(String[] args) {

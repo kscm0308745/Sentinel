@@ -57,4 +57,12 @@ public interface MetricsRepository<T> {
      * @return list of resources
      */
     List<String> listResourcesOfApp(String app);
+
+    /**
+     * List resource name of provided application name.
+     *
+     * @param app application name
+     * @return list of resources
+     */
+    List<String> listResourcesOfApp(String app, long startTime, long endTime);
 }
