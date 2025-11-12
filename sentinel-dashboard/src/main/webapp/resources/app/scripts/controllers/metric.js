@@ -9,15 +9,130 @@ app.controller('MetricCtl', ['$scope', '$stateParams', 'MetricService', '$interv
     $scope.startTimeFmt = formatDate($scope.startTime);
     $scope.endTimeFmt = formatDate($scope.endTime);
     function formatDate(date) {
-      return moment(date).format('YYYY/MM/DD HH:mm:ss');
+      // return moment(date).format('YYYY/MM/DD HH:mm:ss');
+        const year = date.getFullYear();
+        // 月份从0开始，需要+1
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     }
-    $scope.changeStartTime = function (startTime) {
-      $scope.startTime = new Date(startTime);
-      $scope.startTimeFmt = formatDate(startTime);
+      // 校验函数
+      function validateDateTime(input) {
+          // 正则表达式匹配格式 yyyy-MM-dd HH:mm:ss
+          const regex = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
+          const match = input.match(regex);
+
+          if (!match) {
+              return {
+                  isValid: false,
+                  message: '格式不正确，请使用 yyyy-MM-dd HH:mm:ss 格式'
+              };
+          }
+
+          // 提取日期时间组件
+          const year = parseInt(match[1], 10);
+          const month = parseInt(match[2], 10);
+          const day = parseInt(match[3], 10);
+          const hour = parseInt(match[4], 10);
+          const minute = parseInt(match[5], 10);
+          const second = parseInt(match[6], 10);
+
+          // 验证月份
+          if (month < 1 || month > 12) {
+              return {
+                  isValid: false,
+                  message: '月份必须在 01-12 之间'
+              };
+          }
+
+          // 验证日期
+          const daysInMonth = new Date(year, month, 0).getDate();
+          if (day < 1 || day > daysInMonth) {
+              return {
+                  isValid: false,
+                  message: `日期无效，${year}年${month}月只有${daysInMonth}天`
+              };
+          }
+
+          // 验证小时
+          if (hour < 0 || hour > 23) {
+              return {
+                  isValid: false,
+                  message: '小时必须在 00-23 之间'
+              };
+          }
+
+          // 验证分钟
+          if (minute < 0 || minute > 59) {
+              return {
+                  isValid: false,
+                  message: '分钟必须在 00-59 之间'
+              };
+          }
+
+          // 验证秒钟
+          if (second < 0 || second > 59) {
+              return {
+                  isValid: false,
+                  message: '秒钟必须在 00-59 之间'
+              };
+          }
+
+          // 检查是否为有效日期（处理闰年等情况）
+          const date = new Date(year, month - 1, day, hour, minute, second);
+          if (date.getFullYear() !== year ||
+              date.getMonth() + 1 !== month ||
+              date.getDate() !== day ||
+              date.getHours() !== hour ||
+              date.getMinutes() !== minute ||
+              date.getSeconds() !== second) {
+              return {
+                  isValid: false,
+                  message: '无效的日期时间'
+              };
+          }
+
+          return {
+              isValid: true,
+              message: '日期时间格式正确！',
+          };
+      }
+
+    $scope.changeStartTime = function () {
+      // $scope.startTimeFmt = formatDate(startTime);
+      var validateResult = validateDateTime($scope.startTimeFmt);
+      if (!validateResult.isValid) {
+        alert(validateResult.message);
+        $scope.startTimeFmt = formatDate($scope.startTime);
+        return;
+      }
+      $scope.startTime = new Date($scope.startTimeFmt);
+      reInitIdentityDatas();
     };
     $scope.changeEndTime = function (endTime) {
-      $scope.endTime = new Date(endTime);
-      $scope.endTimeFmt = formatDate(endTime);
+      // $scope.endTime = new Date(endTime);
+      var validateResult = validateDateTime($scope.endTimeFmt);
+      if (!validateResult.isValid) {
+        alert(validateResult.message);
+        $scope.endTimeFmt = formatDate($scope.endTime);
+        return;
+      }
+      $scope.endTime = new Date($scope.endTimeFmt);
+      reInitIdentityDatas();
+    };
+    $scope.handleStartTimeKeyPress = function ($event) {
+      if ($event.which === 13) {
+        $scope.changeStartTime($scope.startTimeFmt);
+      }
+    };
+    $scope.handleEndTimeKeyPress = function ($event) {
+      if ($event.which === 13) {
+        $scope.changeEndTime($scope.endTimeFmt);
+      }
     };
 
     $scope.app = $stateParams.app;
@@ -48,6 +163,11 @@ app.controller('MetricCtl', ['$scope', '$stateParams', 'MetricService', '$interv
     var intervalId;
     reInitIdentityDatas();
     function reInitIdentityDatas() {
+      if ($scope.endTime.getTime()-$scope.startTime.getTime()>1000*60*60) {
+        alert('时间范围不能超过1小时');
+        return;
+      }
+
       $interval.cancel(intervalId);
       queryIdentityDatas();
       intervalId = $interval(function () {
@@ -182,6 +302,8 @@ app.controller('MetricCtl', ['$scope', '$stateParams', 'MetricService', '$interv
         pageIndex: $scope.servicePageConfig.currentPageIndex,
         pageSize: $scope.servicePageConfig.pageSize,
         desc: $scope.isDescOrder,
+        startTime: $scope.startTime.getTime(),
+        endTime: $scope.endTime.getTime(),
         searchKey: $scope.serviceQuery
       };
       MetricService.queryAppSortedIdentities(params).success(function (data) {
